@@ -1,0 +1,97 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Debug-7a4bb2c44f9403597d62.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.8"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "azure_kinect_ros2_driver",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_build_azure_kinect_ros2_driver_egg::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_build_azure_kinect_ros2_driver_egg-Debug-2f5d6b8afc3bcc2e497e.json",
+					"name" : "ament_cmake_python_build_azure_kinect_ros2_driver_egg",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_copy_azure_kinect_ros2_driver::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_copy_azure_kinect_ros2_driver-Debug-70f225173bd626988735.json",
+					"name" : "ament_cmake_python_copy_azure_kinect_ros2_driver",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "azure_kinect_node::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-azure_kinect_node-Debug-0eaa99e170f634140992.json",
+					"name" : "azure_kinect_node",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "azure_kinect_ros2_driver_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-azure_kinect_ros2_driver_uninstall-Debug-4e8b6e3d4b7584648b2b.json",
+					"name" : "azure_kinect_ros2_driver_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-Debug-ef1a24b8b6eabcdd2319.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/campbell/ws/src/azure_kinect_ros2_driver/cmake-build-debug",
+		"source" : "/home/campbell/ws/src/azure_kinect_ros2_driver"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 4
+	}
+}
