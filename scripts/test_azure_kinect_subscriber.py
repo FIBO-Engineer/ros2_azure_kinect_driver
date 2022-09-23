@@ -116,7 +116,7 @@ def main(args=None):
     #subscription_depth_rect = g_node.create_subscription(Image, '/k4a/depth/image_rect', depth_rect_callback, 10)
     #g_node.get_logger().info("Subscribed to %s" % subscription_depth_rect.topic_name)
 
-    subscription_depth_to_rgb = g_node.create_subscription(CameraInfo, '/k4a/depth_to_rgb/image_raw', depth_rgb_callback, 10)
+    subscription_depth_to_rgb = g_node.create_subscription(Image, '/k4a/depth_to_rgb/image_raw', depth_rgb_callback, 10)
     g_node.get_logger().info("Subscribed to %s" % subscription_depth_to_rgb.topic_name)
 
     subscription_rgb_info = g_node.create_subscription(CameraInfo, '/k4a/rgb/camera_info', rgb_info_callback, 10)
