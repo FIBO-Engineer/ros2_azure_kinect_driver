@@ -35,6 +35,16 @@ def rgb_raw_callback(msg):
     cv2.waitKey(1)
 
 
+def depth_rgb_callback(msg):
+    global g_node
+    global cv_bridge
+
+    g_node.get_logger().info('Depth->RGB raw image message of type {} with width: {}  height: {}'.format(type(msg), msg.width, msg.height))
+
+    img = cv_bridge.imgmsg_to_cv2(msg)
+    cv2.imshow("Depth->RGB Raw Image", img)
+    cv2.waitKey(1)
+
 def rgb_rect_callback(msg):
     global g_node
     global cv_bridge
@@ -90,26 +100,29 @@ def main(args=None):
     #subscription_imu = g_node.create_subscription(Imu, '/k4a/imu', imu_callback, 10)
     #g_node.get_logger().info("Subscribed to %s" % subscription_imu.topic_name)
 
-    subscription_rgb_rect = g_node.create_subscription(Image, '/k4a/rgb_to_depth/image_rect', rgb_rect_callback, 10)
-    g_node.get_logger().info("Subscribed to %s" % subscription_rgb_rect.topic_name)
+    #subscription_rgb_rect = g_node.create_subscription(Image, '/k4a/rgb_to_depth/image_rect', rgb_rect_callback, 10)
+    #g_node.get_logger().info("Subscribed to %s" % subscription_rgb_rect.topic_name)
 
     #subscription_rgb_raw = g_node.create_subscription(Image, '/k4a/rgb_to_depth/image_raw', rgb_raw_callback, 10)
     #g_node.get_logger().info("Subscribed to %s" % subscription_rgb_raw.topic_name)
 
-    #subscription_rgb_raw = g_node.create_subscription(Image, '/k4a/rgb/image_raw', rgb_raw_callback, 10)
-    #g_node.get_logger().info("Subscribed to %s" % subscription_rgb_raw.topic_name)
-
-    #subscription_rgb_info = g_node.create_subscription(CameraInfo, '/k4a/rgb_to_depth/camera_info', rgb_info_callback, 10)
-    #g_node.get_logger().info("Subscribed to %s" % subscription_rgb_info.topic_name)
+    subscription_rgb_raw = g_node.create_subscription(Image, '/k4a/rgb/image_raw', rgb_raw_callback, 10)
+    g_node.get_logger().info("Subscribed to %s" % subscription_rgb_raw.topic_name)
 
 
     #subscription_depth_raw = g_node.create_subscription(Image, '/k4a/depth/image_raw', depth_raw_callback, 10)
     #g_node.get_logger().info("Subscribed to %s" % subscription_depth_raw.topic_name)
 
-    subscription_depth_rect = g_node.create_subscription(Image, '/k4a/depth/image_rect', depth_rect_callback, 10)
-    g_node.get_logger().info("Subscribed to %s" % subscription_depth_rect.topic_name)
+    #subscription_depth_rect = g_node.create_subscription(Image, '/k4a/depth/image_rect', depth_rect_callback, 10)
+    #g_node.get_logger().info("Subscribed to %s" % subscription_depth_rect.topic_name)
 
-    #subscription_depth_info = g_node.create_subscription(CameraInfo, '/k4a/depth_to_rgb/camera_info', depth_info_callback, 10)
+    subscription_depth_to_rgb = g_node.create_subscription(CameraInfo, '/k4a/depth_to_rgb/image_raw', depth_rgb_callback, 10)
+    g_node.get_logger().info("Subscribed to %s" % subscription_depth_to_rgb.topic_name)
+
+    subscription_rgb_info = g_node.create_subscription(CameraInfo, '/k4a/rgb/camera_info', rgb_info_callback, 10)
+    g_node.get_logger().info("Subscribed to %s" % subscription_rgb_info.topic_name)
+
+    #subscription_depth_info = g_node.create_subscription(CameraInfo, '/k4a/depth/camera_info', depth_info_callback, 10)
     #g_node.get_logger().info("Subscribed to %s" % subscription_depth_info.topic_name)
 
 
