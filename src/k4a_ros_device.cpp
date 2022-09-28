@@ -619,7 +619,7 @@ k4a_result_t K4AROS2Device::getRgbPointCloudInRgbFrame(const k4a::capture& captu
       calibration_data_->transformed_depth_image_, K4A_CALIBRATION_TYPE_COLOR, &calibration_data_->point_cloud_image_);
 
   point_cloud->header.frame_id = calibration_data_->tf_prefix_ + calibration_data_->rgb_camera_frame_;
-  point_cloud->header.stamp = timestampToROS(k4a_depth_frame.get_device_timestamp());
+  point_cloud->header.stamp = timestampToROS(k4a_bgra_frame.get_device_timestamp());
   this->printTimestampDebugMessage("RGB point cloud", point_cloud->header.stamp);
 
   return fillColorPointCloud(calibration_data_->point_cloud_image_, k4a_bgra_frame, point_cloud);
@@ -647,7 +647,7 @@ k4a_result_t K4AROS2Device::getPointCloud(const k4a::capture& capture, std::shar
 }
 
 k4a_result_t K4AROS2Device::fillColorPointCloud(const k4a::image& pointcloud_image, const k4a::image& color_image,
-                                                std::shared_ptr<sensor_msgs::msg::PointCloud2>  point_cloud)
+                                                std::shared_ptr<sensor_msgs::msg::PointCloud2>&  point_cloud)
 {
   point_cloud->height = pointcloud_image.get_height_pixels();
   point_cloud->width = pointcloud_image.get_width_pixels();
@@ -869,9 +869,9 @@ void K4AROS2Device::framePublisherThread()
     std::shared_ptr<sensor_msgs::msg::Image> depth_rect_frame =
         std::shared_ptr<sensor_msgs::msg::Image>();
 
-
     std::shared_ptr<sensor_msgs::msg::PointCloud2> point_cloud =
-        std::shared_ptr<sensor_msgs::msg::PointCloud2>();
+        std::make_shared<sensor_msgs::msg::PointCloud2>();
+
 
     if (this->get_parameter("depth_enabled").as_bool())
     {
@@ -1069,6 +1069,8 @@ void K4AROS2Device::framePublisherThread()
     if (process_cloud_ && pointcloud_publisher_->get_subscription_count() > 0 &&
         (k4a_device_ || (capture.get_color_image() != nullptr && capture.get_depth_image() != nullptr)))
     {
+    
+      RCLCPP_DEBUG(this->get_logger(), "Processing point cloud...");
       if (this->get_parameter("rgb_point_cloud").as_bool())
       {
         if (this->get_parameter("point_cloud_in_depth_frame").as_bool())

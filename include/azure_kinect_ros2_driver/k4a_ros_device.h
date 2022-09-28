@@ -53,8 +53,8 @@ class K4AROS2Device : public rclcpp::Node
     void stopImu();
 
     // Get camera calibration information for the depth camera
-    void getDepthCameraInfo(std::shared_ptr<sensor_msgs::msg::CameraInfo> camera_info);
-    void getRgbCameraInfo(std::shared_ptr<sensor_msgs::msg::CameraInfo> camera_info);
+    //void getDepthCameraInfo(std::shared_ptr<sensor_msgs::msg::CameraInfo> camera_info);
+    //void getRgbCameraInfo(std::shared_ptr<sensor_msgs::msg::CameraInfo> camera_info);
 
     k4a_result_t getDepthFrame(const k4a::capture& capture, std::shared_ptr<sensor_msgs::msg::Image>& depth_frame, bool rectified);
 
@@ -80,7 +80,7 @@ class K4AROS2Device : public rclcpp::Node
 
     k4a_result_t fillPointCloud(const k4a::image& pointcloud_image, std::shared_ptr<sensor_msgs::msg::PointCloud2> point_cloud);
     k4a_result_t fillColorPointCloud(const k4a::image& pointcloud_image, const k4a::image& color_image,
-                                     std::shared_ptr<sensor_msgs::msg::PointCloud2> point_cloud);
+                                     std::shared_ptr<sensor_msgs::msg::PointCloud2>& point_cloud);
 
     void framePublisherThread();
     void imuPublisherThread();
