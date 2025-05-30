@@ -6,7 +6,7 @@ def generate_launch_description():
 
 
     k4a_node = Node(
-        package="azure_kinect_ros2_driver",
+        package="ros2_azure_kinect_driver",
         executable="azure_kinect_node",
         name="k4a_ros2_node",
         output="screen",

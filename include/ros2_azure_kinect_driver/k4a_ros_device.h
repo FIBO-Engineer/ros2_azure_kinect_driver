@@ -17,6 +17,7 @@
 #include <image_transport/image_transport.hpp>
 #include <image_transport/publisher.hpp>
 #include <k4a/k4a.h>
+#include <k4abt.h>
 #include <rclcpp/rclcpp.hpp>
 
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -27,13 +28,17 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/temperature.h>
 #include <k4arecord/playback.hpp>
+#include <hri_msgs/msg/skeleton2_d.hpp>
+#include <hri_msgs/msg/normalized_point_of_interest2_d.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 
 
 // Project headers
 //
-#include "azure_kinect_ros2_driver/k4a_calibration_transform_data.h"
-#include "azure_kinect_ros2_driver/k4a_ros_device_params.h"
+#include "ros2_azure_kinect_driver/k4a_calibration_transform_data.h"
+#include "ros2_azure_kinect_driver/k4a_ros_device_params.h"
 
 
 
@@ -51,6 +56,7 @@ class K4AROS2Device : public rclcpp::Node
 
     void stopCameras();
     void stopImu();
+    void stopBodyTracker();
 
     // Get camera calibration information for the depth camera
     //void getDepthCameraInfo(std::shared_ptr<sensor_msgs::msg::CameraInfo> camera_info);
@@ -69,6 +75,10 @@ class K4AROS2Device : public rclcpp::Node
     k4a_result_t getJpegRgbFrame(const k4a::capture& capture, std::shared_ptr<sensor_msgs::msg::CompressedImage> jpeg_image);
 
     k4a_result_t getIrFrame(const k4a::capture& capture, std::shared_ptr<sensor_msgs::msg::Image>& ir_image);
+
+    k4a_result_t startBodyTracker();
+    k4a_result_t getBodyFrame(const k4a::capture& capture, std::shared_ptr<hri_msgs::msg::Skeleton2D>& skeleton_msg, k4abt_skeleton_t* raw_skeleton = nullptr);
+    void publishSkeletonTF(const k4abt_skeleton_t& skeleton, const rclcpp::Time& timestamp);
 
     void printTimestampDebugMessage(const std::string& name, const rclcpp::Time& timestamp);
 
@@ -122,6 +132,8 @@ class K4AROS2Device : public rclcpp::Node
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::Imu>> imu_orientation_publisher_;
 
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> pointcloud_publisher_;
+    std::shared_ptr<rclcpp::Publisher<hri_msgs::msg::Skeleton2D>> skeleton_publisher_;
+    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
 
     std::shared_ptr<sensor_msgs::msg::CameraInfo> rgb_raw_camerainfo_msg_;
@@ -141,6 +153,10 @@ class K4AROS2Device : public rclcpp::Node
     // K4A Recording
     k4a::playback k4a_playback_handle_;
     std::mutex k4a_playback_handle_mutex_;
+
+    // Body tracking
+    k4abt_tracker_t body_tracker_;
+    bool body_tracking_enabled_;
 
 
 

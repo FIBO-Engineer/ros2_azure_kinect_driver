@@ -5,7 +5,7 @@ def generate_launch_description():
     ld = launch.LaunchDescription()
 
     k4a_node = Node(
-        package="azure_kinect_ros2_driver",
+        package="ros2_azure_kinect_driver",
         executable="azure_kinect_node",
         name="k4a_ros2_node",
         output="screen",
@@ -16,7 +16,7 @@ def generate_launch_description():
     )
 
     k4a_test_node = Node(
-        package="azure_kinect_ros2_driver",
+        package="ros2_azure_kinect_driver",
         executable="test_azure_kinect_subscriber.py",
         output="screen",
         emulate_tty=True

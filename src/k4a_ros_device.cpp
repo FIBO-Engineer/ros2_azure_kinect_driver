@@ -3,7 +3,7 @@
 
 // Associated header
 //
-#include "azure_kinect_ros2_driver/k4a_ros_device.h"
+#include "ros2_azure_kinect_driver/k4a_ros_device.h"
 
 
 // System headers
@@ -15,6 +15,7 @@
 #include <angles/angles.h>
 #include <cv_bridge/cv_bridge.h>
 #include <k4a/k4a.hpp>
+#include <k4abt.h>
 
 //#include <sensor_msgs/distortion_models.hpp>
 #include <sensor_msgs/image_encodings.hpp>
@@ -23,7 +24,7 @@
 
 // Project headers
 //
-#include "azure_kinect_ros2_driver/k4a_ros_types.h"
+#include "ros2_azure_kinect_driver/k4a_ros_types.h"
 
 
 
@@ -38,7 +39,9 @@ K4AROS2Device::K4AROS2Device()
       qos_(1),
       last_imu_time_usec_(0),
       process_cloud_(false),
-      imu_stream_end_of_file_(false)
+      imu_stream_end_of_file_(false),
+      body_tracker_(nullptr),
+      body_tracking_enabled_(false)
 {
 
   RCLCPP_INFO_STREAM(this->get_logger(), "Initializing " << this->get_name() << "...");
@@ -63,6 +66,8 @@ K4AROS2Device::K4AROS2Device()
   std::string pRecordingFile = this->declare_parameter<std::string>("recording_file", "");
   this->declare_parameter<bool>("recording_loop_enabled", false);
   this->declare_parameter<bool>("body_tracking_enabled", false);
+  this->declare_parameter<bool>("body_tracking_publish_skeleton", true);
+  this->declare_parameter<bool>("body_tracking_publish_tf", false);
   this->declare_parameter<int>("imu_rate_target", 100);
   this->declare_parameter<bool>("rescale_ir_to_mono8", false);
   this->declare_parameter<float>("ir_mono8_scaling_factor", 1.0f);;
@@ -320,6 +325,25 @@ K4AROS2Device::K4AROS2Device()
                                                                             qos_);
   }
 
+  // Body tracking publisher
+  if (this->get_parameter("body_tracking_enabled").as_bool()) {
+    body_tracking_enabled_ = true;
+    
+    // Initialize skeleton message publisher if enabled
+    if (this->get_parameter("body_tracking_publish_skeleton").as_bool()) {
+      skeleton_publisher_ = create_publisher<hri_msgs::msg::Skeleton2D>(topic_prefix + "body_tracking/skeleton2d",
+                                                                        qos_);
+      RCLCPP_INFO_STREAM(this->get_logger(),
+                         "Advertised on topic: " << skeleton_publisher_->get_topic_name());
+    }
+    
+    // Initialize TF broadcaster if enabled
+    if (this->get_parameter("body_tracking_publish_tf").as_bool()) {
+      tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+      RCLCPP_INFO(this->get_logger(), "Body tracking TF broadcaster initialized");
+    }
+  }
+
 }
 
 K4AROS2Device::~K4AROS2Device()
@@ -339,6 +363,7 @@ K4AROS2Device::~K4AROS2Device()
 
   stopCameras();
   stopImu();
+  stopBodyTracker();
 
   if (k4a_playback_handle_)
   {
@@ -385,6 +410,17 @@ k4a_result_t K4AROS2Device::startCameras()
   // Prevent the worker thread from exiting immediately
   running_ = true;
 
+  // Start body tracker if enabled
+  if (body_tracking_enabled_)
+  {
+    k4a_result_t tracker_result = startBodyTracker();
+    if (tracker_result != K4A_RESULT_SUCCEEDED)
+    {
+      RCLCPP_ERROR(this->get_logger(), "Failed to start body tracker");
+      // Continue anyway, camera functionality will still work
+    }
+  }
+
   // Start the thread that will poll the cameras and publish frames
   frame_publisher_thread_ = thread(&K4AROS2Device::framePublisherThread, this);
 
@@ -424,6 +460,300 @@ void K4AROS2Device::stopImu()
   if (k4a_device_)
   {
     k4a_device_.stop_imu();
+  }
+}
+
+k4a_result_t K4AROS2Device::startBodyTracker()
+{
+  if (!body_tracking_enabled_)
+  {
+    return K4A_RESULT_SUCCEEDED;
+  }
+
+  if (!k4a_device_)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Cannot start body tracker without K4A device");
+    return K4A_RESULT_FAILED;
+  }
+
+  RCLCPP_INFO(this->get_logger(), "Starting body tracker...");
+  
+  k4abt_tracker_configuration_t tracker_config = K4ABT_TRACKER_CONFIG_DEFAULT;
+  k4a_result_t result = k4abt_tracker_create(&calibration_data_->k4a_calibration_, tracker_config, &body_tracker_);
+  
+  if (result != K4A_RESULT_SUCCEEDED)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Failed to create body tracker");
+    return result;
+  }
+
+  RCLCPP_INFO(this->get_logger(), "Body tracker started successfully");
+  return K4A_RESULT_SUCCEEDED;
+}
+
+void K4AROS2Device::stopBodyTracker()
+{
+  if (body_tracker_ != nullptr)
+  {
+    RCLCPP_INFO(this->get_logger(), "Stopping body tracker");
+    k4abt_tracker_shutdown(body_tracker_);
+    k4abt_tracker_destroy(body_tracker_);
+    body_tracker_ = nullptr;
+    RCLCPP_INFO(this->get_logger(), "Body tracker stopped");
+  }
+}
+
+k4a_result_t K4AROS2Device::getBodyFrame(const k4a::capture& capture, std::shared_ptr<hri_msgs::msg::Skeleton2D>& skeleton_msg, k4abt_skeleton_t* raw_skeleton)
+{
+  if (!body_tracking_enabled_ || body_tracker_ == nullptr)
+  {
+    return K4A_RESULT_FAILED;
+  }
+
+  // Enqueue the capture for body tracking
+  k4a_wait_result_t queue_capture_result = k4abt_tracker_enqueue_capture(body_tracker_, capture.handle(), K4A_WAIT_INFINITE);
+  if (queue_capture_result == K4A_WAIT_RESULT_TIMEOUT)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Error! Add capture to tracker process queue timeout!");
+    return K4A_RESULT_FAILED;
+  }
+  else if (queue_capture_result == K4A_WAIT_RESULT_FAILED)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Error! Add capture to tracker process queue failed!");
+    return K4A_RESULT_FAILED;
+  }
+
+  // Pop the result from the tracker
+  k4abt_frame_t body_frame = nullptr;
+  k4a_wait_result_t pop_frame_result = k4abt_tracker_pop_result(body_tracker_, &body_frame, K4A_WAIT_INFINITE);
+  if (pop_frame_result == K4A_WAIT_RESULT_TIMEOUT)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Error! Pop body frame result timeout!");
+    return K4A_RESULT_FAILED;
+  }
+  else if (pop_frame_result == K4A_WAIT_RESULT_FAILED)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Error! Pop body frame result failed!");
+    return K4A_RESULT_FAILED;
+  }
+
+  // Get number of bodies detected
+  size_t num_bodies = k4abt_frame_get_num_bodies(body_frame);
+  
+  if (num_bodies > 0)
+  {
+    // For now, just process the first body detected
+    k4abt_skeleton_t skeleton;
+    k4a_result_t get_skeleton_result = k4abt_frame_get_body_skeleton(body_frame, 0, &skeleton);
+    
+    if (get_skeleton_result == K4A_RESULT_SUCCEEDED)
+    {
+      // Store raw skeleton data if requested
+      if (raw_skeleton != nullptr) {
+        *raw_skeleton = skeleton;
+      }
+      
+      // Convert skeleton to ROS message only if skeleton_msg is provided
+      if (skeleton_msg) {
+        skeleton_msg->header.stamp = timestampToROS(capture.get_depth_image().get_device_timestamp());
+        skeleton_msg->header.frame_id = calibration_data_->tf_prefix_ + calibration_data_->rgb_camera_frame_;
+        
+        // Resize skeleton array to hold 18 joints (COCO format)
+        skeleton_msg->skeleton.resize(18);
+        
+        // Map K4A joint indices to COCO joint indices
+        // K4A uses different joint ordering than COCO
+        std::map<int, int> k4a_to_coco_map = {
+        {K4ABT_JOINT_NOSE, 0},           // NOSE
+        {K4ABT_JOINT_EYE_LEFT, 1},       // LEFT_EYE
+        {K4ABT_JOINT_EYE_RIGHT, 2},      // RIGHT_EYE
+        {K4ABT_JOINT_EAR_LEFT, 3},       // LEFT_EAR
+        {K4ABT_JOINT_EAR_RIGHT, 4},      // RIGHT_EAR
+        {K4ABT_JOINT_SHOULDER_LEFT, 5},  // LEFT_SHOULDER
+        {K4ABT_JOINT_SHOULDER_RIGHT, 6}, // RIGHT_SHOULDER
+        {K4ABT_JOINT_ELBOW_LEFT, 7},     // LEFT_ELBOW
+        {K4ABT_JOINT_ELBOW_RIGHT, 8},    // RIGHT_ELBOW
+        {K4ABT_JOINT_WRIST_LEFT, 9},     // LEFT_WRIST
+        {K4ABT_JOINT_WRIST_RIGHT, 10},   // RIGHT_WRIST
+        {K4ABT_JOINT_HIP_LEFT, 11},      // LEFT_HIP
+        {K4ABT_JOINT_HIP_RIGHT, 12},     // RIGHT_HIP
+        {K4ABT_JOINT_KNEE_LEFT, 13},     // LEFT_KNEE
+        {K4ABT_JOINT_KNEE_RIGHT, 14},    // RIGHT_KNEE
+        {K4ABT_JOINT_ANKLE_LEFT, 15},    // LEFT_ANKLE
+        {K4ABT_JOINT_ANKLE_RIGHT, 16},   // RIGHT_ANKLE
+      };
+      
+      // Initialize all joints as not detected
+      for (int i = 0; i < 18; i++)
+      {
+        skeleton_msg->skeleton[i].c = 0.0; // confidence = 0 means not detected
+        skeleton_msg->skeleton[i].x = 0.0;
+        skeleton_msg->skeleton[i].y = 0.0;
+      }
+      
+      // Convert each joint from 3D world coordinates to 2D image coordinates
+      for (const auto& joint_mapping : k4a_to_coco_map)
+      {
+        int k4a_joint_id = joint_mapping.first;
+        int coco_joint_id = joint_mapping.second;
+        
+        if (k4a_joint_id < K4ABT_JOINT_COUNT)
+        {
+          k4a_float3_t joint_3d = skeleton.joints[k4a_joint_id].position;
+          k4abt_joint_confidence_level_t confidence = skeleton.joints[k4a_joint_id].confidence_level;
+          
+          // Project 3D joint to 2D image coordinates
+          k4a_float2_t joint_2d;
+          k4a_calibration_3d_to_2d(
+            &calibration_data_->k4a_calibration_,
+            &joint_3d,
+            K4A_CALIBRATION_TYPE_DEPTH,
+            K4A_CALIBRATION_TYPE_COLOR,
+            &joint_2d,
+            nullptr);
+          
+          // Get color image dimensions for normalization
+          k4a::image color_image = capture.get_color_image();
+          if (color_image)
+          {
+            int image_width = color_image.get_width_pixels();
+            int image_height = color_image.get_height_pixels();
+            
+            // Normalize coordinates to [0, 1] range
+            skeleton_msg->skeleton[coco_joint_id].x = joint_2d.xy.x / image_width;
+            skeleton_msg->skeleton[coco_joint_id].y = joint_2d.xy.y / image_height;
+            
+            // Convert confidence level to normalized confidence value
+            if (confidence == K4ABT_JOINT_CONFIDENCE_HIGH)
+            {
+              skeleton_msg->skeleton[coco_joint_id].c = 1.0;
+            }
+            else if (confidence == K4ABT_JOINT_CONFIDENCE_MEDIUM)
+            {
+              skeleton_msg->skeleton[coco_joint_id].c = 0.7;
+            }
+            else if (confidence == K4ABT_JOINT_CONFIDENCE_LOW)
+            {
+              skeleton_msg->skeleton[coco_joint_id].c = 0.3;
+            }
+            else
+            {
+              skeleton_msg->skeleton[coco_joint_id].c = 0.0;
+            }
+          }
+        }
+      }
+      } // End of skeleton_msg conditional
+    }
+  }
+  else
+  {
+    // No bodies detected - initialize empty skeleton if skeleton_msg is provided
+    if (skeleton_msg) {
+      skeleton_msg->header.stamp = timestampToROS(capture.get_depth_image().get_device_timestamp());
+      skeleton_msg->header.frame_id = calibration_data_->tf_prefix_ + calibration_data_->rgb_camera_frame_;
+      skeleton_msg->skeleton.resize(18);
+      for (int i = 0; i < 18; i++)
+      {
+        skeleton_msg->skeleton[i].c = 0.0;
+        skeleton_msg->skeleton[i].x = 0.0;
+        skeleton_msg->skeleton[i].y = 0.0;
+      }
+    }
+  }
+
+  // Clean up the body frame
+  k4abt_frame_release(body_frame);
+  
+  return K4A_RESULT_SUCCEEDED;
+}
+
+void K4AROS2Device::publishSkeletonTF(const k4abt_skeleton_t& skeleton, const rclcpp::Time& timestamp)
+{
+  if (!tf_broadcaster_) {
+    return;
+  }
+
+  std::vector<geometry_msgs::msg::TransformStamped> transforms;
+  
+  // Joint names mapping for TF frames
+  std::map<k4abt_joint_id_t, std::string> joint_names = {
+    {K4ABT_JOINT_PELVIS, "pelvis"},
+    {K4ABT_JOINT_SPINE_NAVEL, "spine_navel"},
+    {K4ABT_JOINT_SPINE_CHEST, "spine_chest"},
+    {K4ABT_JOINT_NECK, "neck"},
+    {K4ABT_JOINT_CLAVICLE_LEFT, "clavicle_left"},
+    {K4ABT_JOINT_SHOULDER_LEFT, "shoulder_left"},
+    {K4ABT_JOINT_ELBOW_LEFT, "elbow_left"},
+    {K4ABT_JOINT_WRIST_LEFT, "wrist_left"},
+    {K4ABT_JOINT_HAND_LEFT, "hand_left"},
+    {K4ABT_JOINT_HANDTIP_LEFT, "handtip_left"},
+    {K4ABT_JOINT_THUMB_LEFT, "thumb_left"},
+    {K4ABT_JOINT_CLAVICLE_RIGHT, "clavicle_right"},
+    {K4ABT_JOINT_SHOULDER_RIGHT, "shoulder_right"},
+    {K4ABT_JOINT_ELBOW_RIGHT, "elbow_right"},
+    {K4ABT_JOINT_WRIST_RIGHT, "wrist_right"},
+    {K4ABT_JOINT_HAND_RIGHT, "hand_right"},
+    {K4ABT_JOINT_HANDTIP_RIGHT, "handtip_right"},
+    {K4ABT_JOINT_THUMB_RIGHT, "thumb_right"},
+    {K4ABT_JOINT_HIP_LEFT, "hip_left"},
+    {K4ABT_JOINT_KNEE_LEFT, "knee_left"},
+    {K4ABT_JOINT_ANKLE_LEFT, "ankle_left"},
+    {K4ABT_JOINT_FOOT_LEFT, "foot_left"},
+    {K4ABT_JOINT_HIP_RIGHT, "hip_right"},
+    {K4ABT_JOINT_KNEE_RIGHT, "knee_right"},
+    {K4ABT_JOINT_ANKLE_RIGHT, "ankle_right"},
+    {K4ABT_JOINT_FOOT_RIGHT, "foot_right"},
+    {K4ABT_JOINT_HEAD, "head"},
+    {K4ABT_JOINT_NOSE, "nose"},
+    {K4ABT_JOINT_EYE_LEFT, "eye_left"},
+    {K4ABT_JOINT_EAR_LEFT, "ear_left"},
+    {K4ABT_JOINT_EYE_RIGHT, "eye_right"},
+    {K4ABT_JOINT_EAR_RIGHT, "ear_right"}
+  };
+
+  // Get the TF prefix from parameters
+  std::string tf_prefix = calibration_data_->tf_prefix_;
+  std::string base_frame = tf_prefix + calibration_data_->depth_camera_frame_;
+
+  for (int joint_id = 0; joint_id < K4ABT_JOINT_COUNT; joint_id++) {
+    k4abt_joint_confidence_level_t confidence = skeleton.joints[joint_id].confidence_level;
+    
+    // Only publish joints with medium or high confidence
+    if (confidence >= K4ABT_JOINT_CONFIDENCE_MEDIUM) {
+      k4a_float3_t position = skeleton.joints[joint_id].position;
+      k4a_quaternion_t orientation = skeleton.joints[joint_id].orientation;
+      
+      geometry_msgs::msg::TransformStamped transform;
+      transform.header.stamp = timestamp;
+      transform.header.frame_id = base_frame;
+      
+      // Create child frame name
+      auto joint_name_it = joint_names.find(static_cast<k4abt_joint_id_t>(joint_id));
+      if (joint_name_it != joint_names.end()) {
+        transform.child_frame_id = tf_prefix + "body_" + joint_name_it->second;
+      } else {
+        transform.child_frame_id = tf_prefix + "body_joint_" + std::to_string(joint_id);
+      }
+      
+      // Set translation (convert from mm to m)
+      transform.transform.translation.x = position.xyz.x / 1000.0;
+      transform.transform.translation.y = position.xyz.y / 1000.0;
+      transform.transform.translation.z = position.xyz.z / 1000.0;
+      
+      // Set rotation
+      transform.transform.rotation.x = orientation.wxyz.x;
+      transform.transform.rotation.y = orientation.wxyz.y;
+      transform.transform.rotation.z = orientation.wxyz.z;
+      transform.transform.rotation.w = orientation.wxyz.w;
+      
+      transforms.push_back(transform);
+    }
+  }
+  
+  // Publish all transforms at once
+  if (!transforms.empty()) {
+    tf_broadcaster_->sendTransform(transforms);
   }
 }
 
@@ -1106,6 +1436,51 @@ void K4AROS2Device::framePublisherThread()
         pointcloud_publisher_->publish(*point_cloud);
       }
     }
+
+    // Process body tracking if enabled
+    if (body_tracking_enabled_ && 
+        (k4a_device_ || (capture.get_color_image() != nullptr && capture.get_depth_image() != nullptr)))
+    {
+      bool publish_skeleton = this->get_parameter("body_tracking_publish_skeleton").as_bool() && 
+                             skeleton_publisher_ && skeleton_publisher_->get_subscription_count() > 0;
+      bool publish_tf = this->get_parameter("body_tracking_publish_tf").as_bool() && tf_broadcaster_;
+      
+      if (publish_skeleton || publish_tf) {
+        RCLCPP_DEBUG(this->get_logger(), "Processing body tracking...");
+        
+        std::shared_ptr<hri_msgs::msg::Skeleton2D> skeleton_msg = nullptr;
+        k4abt_skeleton_t raw_skeleton;
+        
+        // Only create skeleton message if we need to publish it
+        if (publish_skeleton) {
+          skeleton_msg = std::make_shared<hri_msgs::msg::Skeleton2D>();
+        }
+        
+        result = getBodyFrame(capture, skeleton_msg, publish_tf ? &raw_skeleton : nullptr);
+        
+        if (result == K4A_RESULT_SUCCEEDED)
+        {
+          rclcpp::Time timestamp = timestampToROS(capture.get_depth_image().get_device_timestamp());
+          
+          // Publish skeleton message if requested
+          if (publish_skeleton && skeleton_msg) {
+            skeleton_publisher_->publish(*skeleton_msg);
+            this->printTimestampDebugMessage("Body tracking skeleton", skeleton_msg->header.stamp);
+          }
+          
+          // Publish TF transforms if requested
+          if (publish_tf) {
+            publishSkeletonTF(raw_skeleton, timestamp);
+            this->printTimestampDebugMessage("Body tracking TF", timestamp);
+          }
+        }
+        else
+        {
+          RCLCPP_DEBUG_STREAM(this->get_logger(), "Failed to get body frame");
+        }
+      }
+    }
+
     rclcpp::Duration cycle_time = this->now() - cycle_start_time;
 
     // If the cycle took longer than the expected rate (1/fps)

@@ -3,7 +3,7 @@
 
 // Associated header
 //
-#include "azure_kinect_ros2_driver/k4a_calibration_transform_data.h"
+#include "ros2_azure_kinect_driver/k4a_calibration_transform_data.h"
 
 // System headers
 //
@@ -19,7 +19,7 @@
 
 // Project headers
 //
-#include "azure_kinect_ros2_driver/k4a_ros_types.h"
+#include "ros2_azure_kinect_driver/k4a_ros_types.h"
 
 K4ACalibrationTransformData::K4ACalibrationTransformData(rclcpp::Node* node) :
 node_(node)

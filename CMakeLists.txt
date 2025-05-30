@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(azure_kinect_ros2_driver)
+project(ros2_azure_kinect_driver)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -15,8 +15,10 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(angles REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(hri_msgs REQUIRED)
 find_package( k4a REQUIRED )
 find_package( k4arecord REQUIRED )
+find_package( k4abt REQUIRED )
 
 # For Python test subscriber
 find_package(rclpy REQUIRED)
@@ -25,6 +27,12 @@ if(k4a_FOUND)
   message("k4a found")
 else()
   message(FATAL_ERROR "k4a not found!!")
+endif()
+
+if(k4abt_FOUND)
+  message("k4abt found")
+else()
+  message(FATAL_ERROR "k4abt not found!!")
 endif()
 
 
@@ -36,9 +44,9 @@ target_include_directories(azure_kinect_node PUBLIC
   $<INSTALL_INTERFACE:include>)
 
 ament_target_dependencies(azure_kinect_node rclcpp std_msgs sensor_msgs image_transport
-                          tf2_ros tf2_geometry_msgs angles)
+                          tf2_ros tf2_geometry_msgs angles hri_msgs)
 
-target_link_libraries(azure_kinect_node cv_bridge::cv_bridge k4a::k4a k4arecord)
+target_link_libraries(azure_kinect_node cv_bridge::cv_bridge k4a::k4a k4arecord k4abt::k4abt)
 
 target_compile_features(azure_kinect_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
