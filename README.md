@@ -1,12 +1,13 @@
-# Azure Kinect ROS Driver
-> NOTE: The [Azure Kinect DK](https://techcommunity.microsoft.com/t5/mixed-reality-blog/microsoft-s-azure-kinect-developer-kit-technology-transfers-to/ba-p/3899122)
-has been retired and no longer available. The Azure Kinect DK SDK and ROS Node are no longer maintained.
+# Azure Kinect ROS2 Driver
 
-This project is a node which publishes sensor data from the [Azure Kinect Developer Kit](https://azure.microsoft.com/en-us/services/kinect-dk/) to the [Robot Operating System (ROS)](http://www.ros.org/). Developers working with ROS can use this node to connect an Azure Kinect Developer Kit to an existing ROS installation.
+This project is a ROS2 node which publishes sensor data from the [Azure Kinect Developer Kit](https://azure.microsoft.com/en-us/services/kinect-dk/) to the [Robot Operating System (ROS)](https://docs.ros.org/). Developers working with ROS2 can use this node to connect an Azure Kinect Developer Kit to an existing ROS2 installation.
 
-This repository uses the [Azure Kinect Sensor SDK](https://github.com/microsoft/Azure-Kinect-Sensor-SDK) to communicate with the Azure Kinect DK. It supports both Linux and Windows installations of ROS.
+This repository uses the [Azure Kinect Sensor SDK](https://github.com/microsoft/Azure-Kinect-Sensor-SDK) to communicate with the Azure Kinect DK. It supports Linux installations of ROS2.
 
-[![Build Status](https://dev.azure.com/ms/Azure_Kinect_ROS_Driver/_apis/build/status/microsoft.Azure_Kinect_ROS_Driver?branchName=melodic)](https://dev.azure.com/ms/Azure_Kinect_ROS_Driver/_build/latest?definitionId=166&branchName=melodic)
+This is a port of the ROS1 drivers:
+
+- [github.com/matlabbe/Azure_Kinect_ROS_Driver](https://github.com/matlabbe/Azure_Kinect_ROS_Driver)
+- [github.com/microsoft/Azure_Kinect_ROS_Driver](https://github.com/microsoft/Azure_Kinect_ROS_Driver)
 
 ## Features
 
@@ -19,42 +20,49 @@ This ROS node outputs a variety of sensor data, including:
 - The IMU sensor stream
 - A TF2 model representing the extrinsic calibration of the camera
 
-The camera is fully configurable using a variety of options which can be specified in ROS launch files or on the command line.
+The camera is fully configurable using a variety of options which can be specified in ROS2 launch files or on the command line.
 
 However, this node does ***not*** expose all the sensor data from the Azure Kinect Developer Kit hardware. It does not provide access to:
 
 - Microphone array
-
-For more information about how to use the node, please see the [usage guide](docs/usage.md).
+- Body tracking
 
 ## Status
 
-This code is provided as a starting point for using the Azure Kinect Developer Kit with ROS. Community developed features are welcome.
+This is a basic port to ROS2 and not thoroughly tested at this point. Limited testing has been performed with 
+ROS2 Humble on Ubuntu 22.04.
 
-For information on how to contribute, please see our [contributing guide](CONTRIBUTING.md).
+Community additions and fixes are welcome.
 
 ## Building
 
-The Azure Kinect ROS Driver uses catkin to build. For instructions on how to build the project please see the 
-[building guide](docs/building.md).
+### Azure Kinect Sensor SDK
 
-## Join Our Developer Program
+Follow the [installation instructions](https://github.com/microsoft/Azure-Kinect-Sensor-SDK/blob/develop/docs/usage.md#Installation) in the Azure Kinect Sensor SDK repo to install the sensor SDK for your platform.
 
-Complete your developer profile [here](https://aka.ms/iwantmr) to get connected with our Mixed Reality Developer Program. You will receive the latest on our developer tools, events, and early access offers.
+### Compiling
 
-## Code of Conduct
+Clone the repo into the `src` directory of your [ROS2 workspace](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Creating-A-Workspace/Creating-A-Workspace.html).
 
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
-contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+`
+colcon build --symlink-install --packages-select ros2_azure_kinect_driver
+`
 
-## Reporting Security Issues
-Security issues and bugs should be reported privately, via email, to the
-Microsoft Security Response Center (MSRC) at <[secure@microsoft.com](mailto:secure@microsoft.com)>.
-You should receive a response within 24 hours. If for some reason you do not, please follow up via
-email to ensure we received your original message. Further information, including the
-[MSRC PGP](https://technet.microsoft.com/en-us/security/dn606155) key, can be found in the
-[Security TechCenter](https://technet.microsoft.com/en-us/security/default).
+## Running
+Source your workspace: `source <ROS2 ws>/install/setup.bash`
+
+`ros2 run ros2_azure_kinect_driver azure_kinect_node`
+
+or from a file recorded via `k4arecorder`:
+
+`ros2 run ros2_azure_kinect_driver azure_kinect_node --ros-args -p recording_file:=/path/to/myrecording.mkv`
+
+A simple Python-based subscriber is included to visualize some of the data being published. An `image_proc` node is used
+to undistort the images. Install via `sudo apt install ros-<$ROS2_DISTRO>-image-pipeline`
+
+Launch the nodes:
+
+`ros2 launch ros2_azure_kinect_driver k4a_test_record_launch.py`
 
 ## License
 
